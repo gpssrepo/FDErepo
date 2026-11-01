@@ -38,6 +38,8 @@ export default function App() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [timing, setTiming] = useState(null) // {first, total} seconds for the last reply
+  const [waited, setWaited] = useState(0)
   const abortRef = useRef(null)
   const endRef = useRef(null)
 
@@ -50,6 +52,12 @@ export default function App() {
     s.setProperty('--accent2', role.accent2)
     s.setProperty('--hue', role.hue)
   }, [role])
+
+  useEffect(() => {
+    if (!busy) { setWaited(0); return }
+    const t = setInterval(() => setWaited((w) => w + 1), 1000)
+    return () => clearInterval(t)
+  }, [busy])
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
 
@@ -72,6 +80,10 @@ export default function App() {
     setInput('')
     setError('')
     setBusy(true)
+    setTiming(null)
+    const t0 = Date.now()
+    let first = null
+    const secs = () => +((Date.now() - t0) / 1000).toFixed(1)
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
@@ -80,12 +92,13 @@ export default function App() {
         systemPrompt: role.prompt,
         messages: history,
         signal: ctrl.signal,
-        onToken: (t) => append(id, (m) => {
+        onToken: (t) => { if (first === null) first = secs(); append(id, (m) => {
           const copy = m.slice()
           copy[copy.length - 1] = { ...copy[copy.length - 1], text: copy[copy.length - 1].text + t }
           return copy
-        }),
+        }) },
       })
+      setTiming({ first, total: secs() })
     } catch (e) {
       if (e.name !== 'AbortError') {
         setError(e.message)
@@ -158,7 +171,7 @@ export default function App() {
                 )}
                 {messages.map((m, i) => (
                   <div key={i} className={`msg ${m.role === 'user' ? 'user' : 'bot'}`}>
-                    {m.role === 'user' ? m.text : m.text ? <Markdown text={m.text} /> : <span className="typing"><i /><i /><i /></span>}
+                    {m.role === 'user' ? m.text : m.text ? <Markdown text={m.text} /> : <span className="typing"><i /><i /><i />{waited >= 3 && <em className="muted"> waiting {waited}s…</em>}</span>}
                   </div>
                 ))}
                 {error && <div className="error">⚠️ {error}</div>}
@@ -177,7 +190,7 @@ export default function App() {
             </form>
           </>
         )}
-        <div className="foot">Model: {MODEL}</div>
+        <div className="foot">Model: {MODEL}{timing && ` · first words ${timing.first}s · total ${timing.total}s`}</div>
       </main>
     </div>
   )
