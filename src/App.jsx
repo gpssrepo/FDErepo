@@ -44,6 +44,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [timing, setTiming] = useState(null) // {first, total} seconds for the last reply
   const [waited, setWaited] = useState(0)
+  const [status, setStatus] = useState('')
   const abortRef = useRef(null)
   const endRef = useRef(null)
 
@@ -85,6 +86,7 @@ export default function App() {
     setError('')
     setBusy(true)
     setTiming(null)
+    setStatus('')
     const t0 = Date.now()
     let first = null
     const secs = () => +((Date.now() - t0) / 1000).toFixed(1)
@@ -97,6 +99,7 @@ export default function App() {
         systemPrompt: role.prompt,
         messages: history,
         signal: ctrl.signal,
+        onStatus: setStatus,
         onToken: (t) => { if (first === null) first = secs(); append(id, (m) => {
           const copy = m.slice()
           copy[copy.length - 1] = { ...copy[copy.length - 1], text: copy[copy.length - 1].text + t }
@@ -181,7 +184,7 @@ export default function App() {
                 )}
                 {messages.map((m, i) => (
                   <div key={i} className={`msg ${m.role === 'user' ? 'user' : 'bot'}`}>
-                    {m.role === 'user' ? m.text : m.text ? <Markdown text={m.text} /> : <span className="typing"><i /><i /><i />{waited >= 3 && <em className="muted"> waiting {waited}s…</em>}</span>}
+                    {m.role === 'user' ? m.text : m.text ? <Markdown text={m.text} /> : <span className="typing"><i /><i /><i />{waited >= 3 && <em className="muted"> {status || `waiting ${waited}s…`}</em>}</span>}
                   </div>
                 ))}
                 {error && <div className="error">⚠️ {error}</div>}
