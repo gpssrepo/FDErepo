@@ -9,7 +9,7 @@ function buildPrompt(role, { topic, count, difficulty }) {
 ${topic ? `Focus topic: ${topic}.` : 'Cover a broad mix of the most commonly tested areas for this role.'}
 Each question must have exactly 4 plausible options with exactly one correct answer; vary the position of the correct answer.
 Return ONLY JSON in this shape:
-{"questions":[{"question":"...","options":["...","...","...","..."],"answer":0,"explanation":"1-3 sentences on why the answer is right"}]}
+{"questions":[{"question":"...","options":["...","...","...","..."],"answer":0,"explanation":"one short sentence on why the answer is right"}]}
 "answer" is the zero-based index of the correct option.`
 }
 
