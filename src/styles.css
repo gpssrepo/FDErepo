@@ -140,3 +140,4 @@ textarea:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 12px 
 }
 
 .typing em { font-size: .8rem; margin-left: 8px; align-self: center; }
+.notice { background: rgba(250, 204, 21, .12); border: 1px solid #facc15; border-radius: 10px; padding: 10px 12px; font-size: .85rem; }

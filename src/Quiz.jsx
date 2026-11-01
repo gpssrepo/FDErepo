@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { generateJSON } from './gemini.js'
+import { generateJSON, withFallback } from './gemini.js'
 
 export const initialQuiz = { status: 'setup', questions: [], idx: 0, picked: null, score: 0, results: [], error: '' }
 const LETTERS = ['A', 'B', 'C', 'D']
@@ -24,12 +24,13 @@ function validate(list) {
 
 export default function Quiz({ role, apiKey, model, quiz, setQuiz }) {
   const [cfg, setCfg] = useState({ topic: '', count: 5, difficulty: 'medium' })
+  const [note, setNote] = useState('')
   const patch = (p) => setQuiz((q) => ({ ...q, ...p }))
 
   const start = async () => {
     patch({ status: 'loading', error: '' })
     try {
-      const json = await generateJSON({ apiKey, model, prompt: buildPrompt(role, cfg) })
+      const json = await withFallback(model, (m) => generateJSON({ apiKey, model: m, prompt: buildPrompt(role, cfg) }), (n) => setNote(n))
       setQuiz({ ...initialQuiz, status: 'active', questions: validate(json) })
     } catch (e) {
       patch({ status: 'setup', error: e.message })
@@ -72,6 +73,7 @@ export default function Quiz({ role, apiKey, model, quiz, setQuiz }) {
               ))}</div>
             </div>
           </div>
+          {note && <div className="notice">ℹ️ {note}</div>}
           {quiz.error && <div className="error">⚠️ {quiz.error}</div>}
           <button className="send big" onClick={start} disabled={loading}>{loading ? 'Generating quiz…' : 'Start quiz'}</button>
         </div>

@@ -56,7 +56,7 @@ export async function streamChat({ apiKey, model = DEFAULT_MODEL, systemPrompt, 
       const j = await res.json()
       if (j?.error?.message) msg = j.error.message
     } catch { /* ignore */ }
-    throw new Error(hint(res.status, msg))
+    throw Object.assign(new Error(hint(res.status, msg)), { status: res.status })
   }
 
   const reader = res.body.getReader()
@@ -90,7 +90,7 @@ export async function generateJSON({ apiKey, model = DEFAULT_MODEL, prompt, sign
   if (!res.ok) {
     let msg = `Request failed (${res.status})`
     try { msg = (await res.json())?.error?.message || msg } catch { /* ignore */ }
-    throw new Error(hint(res.status, msg))
+    throw Object.assign(new Error(hint(res.status, msg)), { status: res.status })
   }
   const data = await res.json()
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('')
@@ -101,4 +101,19 @@ function hint(status, msg) {
   if (status === 503 || status === 429) return `${msg} (tried 3 times — pick another model in the sidebar, e.g. gemini-2.5-flash, or retry shortly.)`
   if (status === 404) return `${msg} (this model name may not exist — pick another one in the sidebar.)`
   return msg
+}
+
+export const FALLBACK_MODEL = 'gemini-2.5-flash'
+
+// Run `run(model)`; if the model is overloaded / timing out / missing, retry once on the fallback model.
+export async function withFallback(model, run, onFallback) {
+  try {
+    return await run(model)
+  } catch (e) {
+    if ([404, 429, 500, 503].includes(e.status) && model !== FALLBACK_MODEL) {
+      onFallback?.(`${model} was unavailable, so this was answered by ${FALLBACK_MODEL}.`)
+      return await run(FALLBACK_MODEL)
+    }
+    throw e
+  }
 }

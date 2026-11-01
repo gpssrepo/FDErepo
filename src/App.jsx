@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ROLES } from './roles.js'
-import { DEFAULT_MODEL, MODEL_SUGGESTIONS, streamChat } from './gemini.js'
+import { DEFAULT_MODEL, MODEL_SUGGESTIONS, streamChat, withFallback } from './gemini.js'
 import Markdown from './Markdown.jsx'
 import Quiz, { initialQuiz } from './Quiz.jsx'
 
@@ -45,6 +45,7 @@ export default function App() {
   const [timing, setTiming] = useState(null) // {first, total} seconds for the last reply
   const [waited, setWaited] = useState(0)
   const [status, setStatus] = useState('')
+  const [notice, setNotice] = useState('')
   const abortRef = useRef(null)
   const endRef = useRef(null)
 
@@ -87,25 +88,26 @@ export default function App() {
     setBusy(true)
     setTiming(null)
     setStatus('')
+    setNotice('')
     const t0 = Date.now()
     let first = null
     const secs = () => +((Date.now() - t0) / 1000).toFixed(1)
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      await streamChat({
+      await withFallback(model.trim() || DEFAULT_MODEL, (m) => streamChat({
         apiKey,
-        model: model.trim() || DEFAULT_MODEL,
+        model: m,
         systemPrompt: role.prompt,
         messages: history,
         signal: ctrl.signal,
         onStatus: setStatus,
-        onToken: (t) => { if (first === null) first = secs(); append(id, (m) => {
-          const copy = m.slice()
+        onToken: (t) => { if (first === null) first = secs(); append(id, (msgs) => {
+          const copy = msgs.slice()
           copy[copy.length - 1] = { ...copy[copy.length - 1], text: copy[copy.length - 1].text + t }
           return copy
         }) },
-      })
+      }), setNotice)
       setTiming({ first, total: secs() })
     } catch (e) {
       if (e.name !== 'AbortError') {
@@ -187,6 +189,7 @@ export default function App() {
                     {m.role === 'user' ? m.text : m.text ? <Markdown text={m.text} /> : <span className="typing"><i /><i /><i />{waited >= 3 && <em className="muted"> {status || `waiting ${waited}s…`}</em>}</span>}
                   </div>
                 ))}
+                {notice && <div className="notice">ℹ️ {notice}</div>}
                 {error && <div className="error">⚠️ {error}</div>}
                 <div ref={endRef} />
               </div>
