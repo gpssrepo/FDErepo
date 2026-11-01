@@ -47,3 +47,24 @@ export async function streamChat({ apiKey, systemPrompt, messages, onToken, sign
     }
   }
 }
+
+// Non-streaming call that returns parsed JSON (used by the quiz generator).
+export async function generateJSON({ apiKey, prompt, signal }) {
+  const res = await fetch(`${BASE}/${MODEL}:generateContent`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.9, responseMimeType: 'application/json' },
+    }),
+  })
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`
+    try { msg = (await res.json())?.error?.message || msg } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  const data = await res.json()
+  const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('')
+  return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
+}

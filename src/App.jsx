@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ROLES } from './roles.js'
 import { MODEL, streamChat } from './gemini.js'
 import Markdown from './Markdown.jsx'
+import Quiz, { initialQuiz } from './Quiz.jsx'
 
 const KEY_STORAGE = 'gemini_api_key'
 const loadKey = () => { try { return sessionStorage.getItem(KEY_STORAGE) || '' } catch { return '' } }
@@ -32,6 +33,8 @@ export default function App() {
   const [roleId, setRoleId] = useState(ROLES[0].id)
   // conversation kept separately per role
   const [chats, setChats] = useState(() => Object.fromEntries(ROLES.map((r) => [r.id, []])))
+  const [quizzes, setQuizzes] = useState(() => Object.fromEntries(ROLES.map((r) => [r.id, initialQuiz])))
+  const [tab, setTab] = useState('chat')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -95,34 +98,54 @@ export default function App() {
   }
 
   const resetKey = () => { saveKey(''); setApiKey('') }
+  const clearChat = () => { abortRef.current?.abort(); setBusy(false); setError(''); append(roleId, () => []) }
+  const setQuiz = (fn) => setQuizzes((q) => ({ ...q, [roleId]: typeof fn === 'function' ? fn(q[roleId]) : fn }))
+
+  if (!apiKey) {
+    return (
+      <div className="gatewrap">
+        <h1>AI Interview Agent</h1>
+        <ApiKeyGate onSave={(k) => { saveKey(k); setApiKey(k) }} />
+      </div>
+    )
+  }
 
   return (
     <div className="app">
-      <div className="frame glass">
-        <header>
-          <h1>AI Interview Agent</h1>
-          {apiKey && <button className="link" onClick={resetKey} title="Change API key">🔑 Change key</button>}
-        </header>
+      <aside className="side">
+        <h1>AI Interview Agent</h1>
+        <nav className="roles" aria-label="Choose the role you are interviewing for">
+          <span className="sidelabel">Interviewing for</span>
+          {ROLES.map((r) => (
+            <button
+              key={r.id}
+              className={`role ${r.id === roleId ? 'active' : ''}`}
+              style={{ '--c': r.accent }}
+              onClick={() => switchRole(r.id)}
+            >
+              <i className="dot" />{r.label}
+            </button>
+          ))}
+        </nav>
+        <button className="link keybtn" onClick={resetKey} title="Change API key">🔑 Change key</button>
+      </aside>
 
-        {!apiKey ? (
-          <ApiKeyGate onSave={(k) => { saveKey(k); setApiKey(k) }} />
+      <main className="main">
+        <div className="topbar">
+          <div className="tabs" role="tablist">
+            <button role="tab" aria-selected={tab === 'chat'} className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>💬 Chat</button>
+            <button role="tab" aria-selected={tab === 'quiz'} className={tab === 'quiz' ? 'on' : ''} onClick={() => setTab('quiz')}>🧠 Quiz</button>
+          </div>
+          <span className="rolename">{role.label}</span>
+          {tab === 'chat' && messages.length > 0 && <button className="link" onClick={clearChat}>Clear chat</button>}
+        </div>
+
+        {tab === 'quiz' ? (
+          <Quiz key={roleId} role={role} apiKey={apiKey} quiz={quizzes[roleId]} setQuiz={setQuiz} />
         ) : (
           <>
-            <nav className="roles" aria-label="Choose the role you are interviewing for">
-              {ROLES.map((r) => (
-                <button
-                  key={r.id}
-                  className={`role ${r.id === roleId ? 'active' : ''}`}
-                  style={{ '--c': r.accent }}
-                  onClick={() => switchRole(r.id)}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </nav>
-
-            <section className="chat">
-              <div className="messages">
+            <div className="pane messages">
+              <div className="thread">
                 {messages.length === 0 && (
                   <div className="welcome">
                     <p>Preparing for <strong>{role.label}</strong>? Pick a starter or ask anything.</p>
@@ -141,22 +164,21 @@ export default function App() {
                 {error && <div className="error">⚠️ {error}</div>}
                 <div ref={endRef} />
               </div>
-
-              <form className="composer" onSubmit={(e) => { e.preventDefault(); send(input) }}>
-                <textarea
-                  rows={1}
-                  value={input}
-                  placeholder={`Ask about ${role.short} interviews…`}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
-                />
-                <button className="send" type="submit" disabled={busy || !input.trim()}>Send</button>
-              </form>
-              <div className="foot">Model: {MODEL}</div>
-            </section>
+            </div>
+            <form className="composer" onSubmit={(e) => { e.preventDefault(); send(input) }}>
+              <textarea
+                rows={1}
+                value={input}
+                placeholder={`Ask about ${role.short} interviews…  (Enter to send, Shift+Enter for new line)`}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
+              />
+              <button className="send" type="submit" disabled={busy || !input.trim()}>Send</button>
+            </form>
           </>
         )}
-      </div>
+        <div className="foot">Model: {MODEL}</div>
+      </main>
     </div>
   )
 }
