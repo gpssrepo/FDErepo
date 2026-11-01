@@ -22,14 +22,14 @@ function validate(list) {
   return qs
 }
 
-export default function Quiz({ role, apiKey, quiz, setQuiz }) {
+export default function Quiz({ role, apiKey, model, quiz, setQuiz }) {
   const [cfg, setCfg] = useState({ topic: '', count: 5, difficulty: 'medium' })
   const patch = (p) => setQuiz((q) => ({ ...q, ...p }))
 
   const start = async () => {
     patch({ status: 'loading', error: '' })
     try {
-      const json = await generateJSON({ apiKey, prompt: buildPrompt(role, cfg) })
+      const json = await generateJSON({ apiKey, model, prompt: buildPrompt(role, cfg) })
       setQuiz({ ...initialQuiz, status: 'active', questions: validate(json) })
     } catch (e) {
       patch({ status: 'setup', error: e.message })

@@ -1,5 +1,6 @@
 // Gemini REST client with streaming (SSE).
-export const MODEL = 'gemini-3.8-flash'
+export const DEFAULT_MODEL = 'gemini-3.8-flash'
+export const MODEL_SUGGESTIONS = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 // Speed: turn off "thinking" and cap output. If the model rejects the thinking field, retry without it.
@@ -10,16 +11,21 @@ async function post(url, apiKey, body, signal) {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({ ...body, generationConfig: { ...body.generationConfig, ...cfg } }),
   })
-  let res = await send({ thinkingConfig: { thinkingBudget: 0 } })
-  if (res.status === 400) {
-    const retry = await send({})
-    if (retry.ok) res = retry
+  let cfg = { thinkingConfig: { thinkingBudget: 0 } }
+  let res
+  // Retry overloaded / rate-limited responses (503, 429, 500) with a short backoff.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    res = await send(cfg)
+    if (res.status === 400 && cfg.thinkingConfig) { cfg = {}; res = await send(cfg) }
+    if (![429, 500, 503].includes(res.status) || attempt === 3) break
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)))
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   }
   return res
 }
 
-export async function streamChat({ apiKey, systemPrompt, messages, onToken, signal }) {
-  const res = await post(`${BASE}/${MODEL}:streamGenerateContent?alt=sse`, apiKey, {
+export async function streamChat({ apiKey, model = DEFAULT_MODEL, systemPrompt, messages, onToken, signal }) {
+  const res = await post(`${BASE}/${model}:streamGenerateContent?alt=sse`, apiKey, {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     // only send the most recent turns to keep requests small and fast
     contents: messages.slice(-12).map((m) => ({
@@ -35,7 +41,7 @@ export async function streamChat({ apiKey, systemPrompt, messages, onToken, sign
       const j = await res.json()
       if (j?.error?.message) msg = j.error.message
     } catch { /* ignore */ }
-    throw new Error(msg)
+    throw new Error(hint(res.status, msg))
   }
 
   const reader = res.body.getReader()
@@ -61,17 +67,23 @@ export async function streamChat({ apiKey, systemPrompt, messages, onToken, sign
 }
 
 // Non-streaming call that returns parsed JSON (used by the quiz generator).
-export async function generateJSON({ apiKey, prompt, signal }) {
-  const res = await post(`${BASE}/${MODEL}:generateContent`, apiKey, {
+export async function generateJSON({ apiKey, model = DEFAULT_MODEL, prompt, signal }) {
+  const res = await post(`${BASE}/${model}:generateContent`, apiKey, {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.9, responseMimeType: 'application/json' },
   }, signal)
   if (!res.ok) {
     let msg = `Request failed (${res.status})`
     try { msg = (await res.json())?.error?.message || msg } catch { /* ignore */ }
-    throw new Error(msg)
+    throw new Error(hint(res.status, msg))
   }
   const data = await res.json()
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('')
   return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim())
+}
+
+function hint(status, msg) {
+  if (status === 503 || status === 429) return `${msg} (tried 4 times — pick another model in the sidebar, e.g. gemini-2.5-flash, or retry shortly.)`
+  if (status === 404) return `${msg} (this model name may not exist — pick another one in the sidebar.)`
+  return msg
 }

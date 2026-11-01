@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ROLES } from './roles.js'
-import { MODEL, streamChat } from './gemini.js'
+import { DEFAULT_MODEL, MODEL_SUGGESTIONS, streamChat } from './gemini.js'
 import Markdown from './Markdown.jsx'
 import Quiz, { initialQuiz } from './Quiz.jsx'
 
+const MODEL_STORAGE = 'gemini_model'
+const loadModel = () => { try { return localStorage.getItem(MODEL_STORAGE) || DEFAULT_MODEL } catch { return DEFAULT_MODEL } }
 const KEY_STORAGE = 'gemini_api_key'
 const loadKey = () => { try { return sessionStorage.getItem(KEY_STORAGE) || '' } catch { return '' } }
 const saveKey = (k) => { try { k ? sessionStorage.setItem(KEY_STORAGE, k) : sessionStorage.removeItem(KEY_STORAGE) } catch { /* ignore */ } }
@@ -34,6 +36,8 @@ export default function App() {
   // conversation kept separately per role
   const [chats, setChats] = useState(() => Object.fromEntries(ROLES.map((r) => [r.id, []])))
   const [quizzes, setQuizzes] = useState(() => Object.fromEntries(ROLES.map((r) => [r.id, initialQuiz])))
+  const [model, setModelState] = useState(loadModel)
+  const setModel = (m) => { setModelState(m); try { localStorage.setItem(MODEL_STORAGE, m) } catch { /* ignore */ } }
   const [tab, setTab] = useState('chat')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -89,6 +93,7 @@ export default function App() {
     try {
       await streamChat({
         apiKey,
+        model: model.trim() || DEFAULT_MODEL,
         systemPrompt: role.prompt,
         messages: history,
         signal: ctrl.signal,
@@ -140,6 +145,11 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <label className="modelpick">
+          <span className="sidelabel">Model</span>
+          <input list="models" value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} />
+          <datalist id="models">{MODEL_SUGGESTIONS.map((m) => <option key={m} value={m} />)}</datalist>
+        </label>
         <button className="link keybtn" onClick={resetKey} title="Change API key">🔑 Change key</button>
       </aside>
 
@@ -154,7 +164,7 @@ export default function App() {
         </div>
 
         {tab === 'quiz' ? (
-          <Quiz key={roleId} role={role} apiKey={apiKey} quiz={quizzes[roleId]} setQuiz={setQuiz} />
+          <Quiz key={roleId} role={role} apiKey={apiKey} model={model.trim() || DEFAULT_MODEL} quiz={quizzes[roleId]} setQuiz={setQuiz} />
         ) : (
           <>
             <div className="pane messages">
@@ -190,7 +200,7 @@ export default function App() {
             </form>
           </>
         )}
-        <div className="foot">Model: {MODEL}{timing && ` · first words ${timing.first}s · total ${timing.total}s`}</div>
+        <div className="foot">Model: {model}{timing && ` · first words ${timing.first}s · total ${timing.total}s`}</div>
       </main>
     </div>
   )
